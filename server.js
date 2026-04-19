@@ -11,7 +11,7 @@ const OLD_TOKEN      = 'EAFzIcbecZBb0BRFoIxvLHL2ZAxrNlB4D8QBArecmzePtVkXkrZBJjgt
 const IG_TOKEN       = 'IGAAM1zaZCpblFBZAGE0YURidFVPOTRPeWUyM1Y0N2lBMlRsR0tIOFdFMXppN25BVG90ZA1hfcW9ySzllbWlock1jY2lSa19HRzZA2OTk4SXBGMFBhcHN6aHhwaWd4TG96ZAmlUamJPWVdUVDJ0M2QxVjh1NHJWOWlXVHV3RUVpakN5YwZDZD';
 const OLD_IG_ID      = '17841406844210220'; // לקריאת מדיה ותגובות
 const NEW_IG_ID      = '34923777137270567'; // לשליחת DM
-const TRIGGER_WORD   = 'אוכל אותי';
+const TRIGGER_WORDS  = ['אוכל אותי', 'ספרי לי', 'רוצה לדעת עוד'];
 const POLL_MS        = 2 * 60 * 1000;
 
 const PUBLIC_REPLIES = [
@@ -24,14 +24,15 @@ const PUBLIC_REPLIES = [
 
 const LANDING_PAGE = 'https://lrs.ravpage.co.il/%D7%A4%D7%A8%D7%98%D7%99%D7%9D%20%D7%A9%D7%99%D7%97%D7%AA%20%D7%94%D7%AA%D7%90%D7%9E%D7%94';
 
-const DM_TEXT = `הי, כאן ליטל שחר ❤️
+const DM_TEXT = `הי, כאן ליטל שחר 🤍
 
-כיף שהגעת.
+שמחה שכתבת.
 
-אם הרגשת שזה מדבר אלייך - זה לא במקרה.
+אם מה שכתבתי נגע בך - זה לא במקרה.
+זה אומר שאנחנו מדברות על אותו דבר.
 
-השארתי לך כאן משהו קטן שיעזור לך להבין מה באמת אוכל אותך:
-👉 ${LANDING_PAGE}
+השארתי לך קישור לשיחת היכרות קצרה -
+כדי שנוכל להבין יחד אם אנחנו מתאימות לעבוד ביחד על מה שאוכל אותך.
 
 אוהבת ליטל 🤍`;
 
@@ -96,13 +97,40 @@ async function replyToComment(commentId, text) {
   else console.log('✓ תגובה ציבורית נשלחה');
 }
 
-async function sendDM(commentId, text) {
+async function sendDM(commentId) {
+  // ניסיון ראשון: הודעה עם כפתור (generic template)
   const result = await igPost(`/${NEW_IG_ID}/messages`, {
     recipient: { comment_id: commentId },
-    message: { text },
+    message: {
+      attachment: {
+        type: 'template',
+        payload: {
+          template_type: 'generic',
+          elements: [{
+            title: 'ליטל שחר 🤍',
+            subtitle: DM_TEXT,
+            buttons: [{
+              type: 'web_url',
+              url: LANDING_PAGE,
+              title: 'לשיחה קצרה איתי',
+            }],
+          }],
+        },
+      },
+    },
   });
-  if (result.error) console.error('שגיאה ב-DM:', result.error.message);
-  else console.log('✓ DM נשלח! message_id:', result.message_id);
+  if (result.error) {
+    console.error('שגיאה ב-DM (template):', result.error.message, '- שולחת טקסט רגיל');
+    // fallback: טקסט רגיל עם הקישור
+    const fallback = await igPost(`/${NEW_IG_ID}/messages`, {
+      recipient: { comment_id: commentId },
+      message: { text: DM_TEXT + '\n\n' + LANDING_PAGE },
+    });
+    if (fallback.error) console.error('שגיאה ב-DM (fallback):', fallback.error.message);
+    else console.log('✓ DM נשלח (טקסט)! message_id:', fallback.message_id);
+  } else {
+    console.log('✓ DM נשלח עם כפתור! message_id:', result.message_id);
+  }
 }
 
 async function pollComments() {
@@ -122,11 +150,12 @@ async function pollComments() {
         const text = (comment.text || '').trim();
         const age = Date.now() - new Date(comment.timestamp).getTime();
         if (age > 5 * 60 * 1000) continue;
-        if (!text.includes(TRIGGER_WORD)) continue;
+        const triggered = TRIGGER_WORDS.some(w => text.includes(w));
+        if (!triggered) continue;
 
         console.log(`🎯 טריגר! "${text}" מ-${comment.from?.username}`);
         await replyToComment(comment.id, randomReply());
-        await sendDM(comment.id, DM_TEXT);
+        await sendDM(comment.id);
       }
     }
   } catch(e) {

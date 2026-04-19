@@ -95,6 +95,7 @@ async function replyToComment(commentId, text) {
   const result = await fbPost(`/${commentId}/replies`, { message: text });
   if (result.error) console.error('שגיאה בתגובה ציבורית:', result.error.message);
   else console.log('✓ תגובה ציבורית נשלחה');
+  return result;
 }
 
 async function sendDM(commentId) {
@@ -121,15 +122,16 @@ async function sendDM(commentId) {
   });
   if (result.error) {
     console.error('שגיאה ב-DM (template):', result.error.message, '- שולחת טקסט רגיל');
-    // fallback: טקסט רגיל עם הקישור
     const fallback = await igPost(`/${NEW_IG_ID}/messages`, {
       recipient: { comment_id: commentId },
       message: { text: DM_TEXT + '\n\n' + LANDING_PAGE },
     });
     if (fallback.error) console.error('שגיאה ב-DM (fallback):', fallback.error.message);
     else console.log('✓ DM נשלח (טקסט)! message_id:', fallback.message_id);
+    return fallback;
   } else {
     console.log('✓ DM נשלח עם כפתור! message_id:', result.message_id);
+    return result;
   }
 }
 
@@ -165,8 +167,11 @@ async function pollComments() {
         if (!triggered) continue;
 
         console.log(`🎯 טריגר! "${text}" מ-${comment.from?.username} (גיל: ${age}s)`);
-        await replyToComment(comment.id, randomReply());
-        await sendDM(comment.id);
+        debugLog.push(`[${new Date().toISOString()}] מעבד comment ${comment.id}`);
+        const replyResult = await replyToComment(comment.id, randomReply());
+        debugLog.push(`[${new Date().toISOString()}] תגובה: ${JSON.stringify(replyResult)}`);
+        const dmResult = await sendDM(comment.id);
+        debugLog.push(`[${new Date().toISOString()}] DM: ${JSON.stringify(dmResult)}`);
       }
     }
   } catch(e) {

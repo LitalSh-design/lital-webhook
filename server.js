@@ -147,7 +147,10 @@ app.get('/webhook', (req, res) => {
 
 app.post('/webhook', (req, res) => res.sendStatus(200));
 
-app.get('/', (req, res) => res.send('Lital Webhook Server - פועל ✓'));
+app.get('/', async (req, res) => {
+  res.send('Lital Webhook Server - פועל ✓');
+  await pollComments(); // סריקה בכל ping
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {

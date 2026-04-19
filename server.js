@@ -116,16 +116,21 @@ async function pollComments() {
   }
 }
 
-// ── אתחול: טען תגובות קיימות כדי לא לענות על ישנות ──
+// ── אתחול: סמן תגובות ישנות (מעל 5 דקות) כ"כבר טופלו" ──
 async function initProcessed() {
   try {
+    const cutoff = Date.now() - 5 * 60 * 1000; // 5 דקות אחורה
     const media = await apiGet(`/${IG_ID}/media?fields=id&limit=10`);
     if (!media.data) return;
     for (const post of media.data) {
-      const comments = await apiGet(`/${post.id}/comments?fields=id`);
-      if (comments.data) comments.data.forEach(c => processedComments.add(c.id));
+      const comments = await apiGet(`/${post.id}/comments?fields=id,timestamp`);
+      if (!comments.data) continue;
+      comments.data.forEach(c => {
+        const t = new Date(c.timestamp).getTime();
+        if (t < cutoff) processedComments.add(c.id); // ישן - דלג
+      });
     }
-    console.log(`אתחול: סומנו ${processedComments.size} תגובות קיימות`);
+    console.log(`אתחול: ${processedComments.size} תגובות ישנות סומנו`);
   } catch(e) {
     console.error('שגיאה באתחול:', e.message);
   }

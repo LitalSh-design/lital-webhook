@@ -133,39 +133,51 @@ async function sendDM(commentId) {
   }
 }
 
+const debugLog = [];
+
 async function pollComments() {
   try {
-    const cutoff = Date.now() - 5 * 60 * 1000;
     const media = await fbGet(`/${OLD_IG_ID}/media?fields=id&limit=10`);
-    if (!media.data) return;
+    if (!media.data) {
+      debugLog.push(`[${new Date().toISOString()}] אין מדיה: ${JSON.stringify(media)}`);
+      return;
+    }
 
     for (const post of media.data) {
       const comments = await fbGet(`/${post.id}/comments?fields=id,text,from,timestamp`);
       if (!comments.data) continue;
 
       for (const comment of comments.data) {
-        if (processedComments.has(comment.id)) continue;
+        const text = (comment.text || '').trim();
+        const age = Math.round((Date.now() - new Date(comment.timestamp).getTime()) / 1000);
+        const already = processedComments.has(comment.id);
+        const triggered = TRIGGER_WORDS.some(w => text.includes(w));
+
+        if (triggered) {
+          debugLog.push(`[${new Date().toISOString()}] טריגר: "${text}" גיל:${age}s כבר-טופל:${already}`);
+          if (debugLog.length > 50) debugLog.shift();
+        }
+
+        if (already) continue;
         processedComments.add(comment.id);
 
-        const text = (comment.text || '').trim();
-        const age = Date.now() - new Date(comment.timestamp).getTime();
-        if (age > 5 * 60 * 1000) continue;
-        const triggered = TRIGGER_WORDS.some(w => text.includes(w));
+        if (age > 60 * 60 * 1000) continue; // דלג אם ישן מ-1 שעה
         if (!triggered) continue;
 
-        console.log(`🎯 טריגר! "${text}" מ-${comment.from?.username}`);
+        console.log(`🎯 טריגר! "${text}" מ-${comment.from?.username} (גיל: ${age}s)`);
         await replyToComment(comment.id, randomReply());
         await sendDM(comment.id);
       }
     }
   } catch(e) {
     console.error('שגיאה בסריקה:', e.message);
+    debugLog.push(`[${new Date().toISOString()}] שגיאה: ${e.message}`);
   }
 }
 
 async function initProcessed() {
   try {
-    const cutoff = Date.now() - 5 * 60 * 1000;
+    const cutoff = Date.now() - 60 * 60 * 1000; // סמן ישן מ-1 שעה
     const media = await fbGet(`/${OLD_IG_ID}/media?fields=id&limit=10`);
     if (!media.data) return;
     for (const post of media.data) {
@@ -188,6 +200,13 @@ app.get('/webhook', (req, res) => {
 });
 
 app.post('/webhook', (req, res) => res.sendStatus(200));
+
+app.get('/debug', (req, res) => {
+  res.json({
+    processedCount: processedComments.size,
+    recentLogs: debugLog.slice(-20),
+  });
+});
 
 app.get('/', async (req, res) => {
   res.send('Lital Webhook Server - פועל ✓');

@@ -8,7 +8,7 @@ const VERIFY_TOKEN   = 'lital_webhook_secret_2024';
 // טוקן ישן - לקריאת תגובות (Facebook Graph API)
 const OLD_TOKEN      = 'EAFzIcbecZBb0BRFoIxvLHL2ZAxrNlB4D8QBArecmzePtVkXkrZBJjgt3ZBj0XJFS8XwOBHYioZBmzjcOr3raOTHzZCnV8G1bongfmvQZCCwlZCNINSXNW69NgcwgBZB2suR0lEKlrieSbqzsvohEPTy8wMZCBZCUZBtBPQuZAM7dqDMldJs3pSZCpeAiWVcKZBvlsZCYftPwUWZCVTxJSyXbcKZBZCcrdxYDhOn4VU6YA1SnEcl';
 // טוקן חדש - לשליחת DM (Instagram API)
-const IG_TOKEN       = 'IGAAM1zaZCpblFBZAGE0YURidFVPOTRPeWUyM1Y0N2lBMlRsR0tIOFdFMXppN25BVG90ZA1hfcW9ySzllbWlock1jY2lSa19HRzZA2OTk4SXBGMFBhcHN6aHhwaWd4TG96ZAmlUamJPWVdUVDJ0M2QxVjh1NHJWOWlXVHV3RUVpakN5YwZDZD';
+const IG_TOKEN       = 'IGAAM1zaZCpblFBZAFlHMFNrRHQ2dWRkZA3JtM0xiOEhRREowRnNJdHJVS0VjSEpnZAzQwU2VuOHVHMUpncjhZAZAzZAzMlV1Q3kxUm9MZAW1WX05aQTVORlBXbi1MZAUozR3RFVmZA6V0ZABT245Vkp0bGVFQThURW9R';
 const OLD_IG_ID      = '17841406844210220'; // לקריאת מדיה ותגובות
 const NEW_IG_ID      = '34923777137270567'; // לשליחת DM
 const TRIGGER_WORDS  = ['אוכל אותי', 'ספרי לי', 'רוצה לדעת עוד'];

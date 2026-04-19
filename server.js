@@ -1,15 +1,16 @@
 const express = require('express');
 const https = require('https');
+const fs = require('fs');
 const app = express();
 app.use(express.json());
 
 // ── הגדרות ──
-const VERIFY_TOKEN   = 'lital_webhook_secret_2024';
-const PAGE_TOKEN     = 'EAFzIcbecZBb0BRFoIxvLHL2ZAxrNlB4D8QBArecmzePtVkXkrZBJjgt3ZBj0XJFS8XwOBHYioZBmzjcOr3raOTHzZCnV8G1bongfmvQZCCwlZCNINSXNW69NgcwgBZB2suR0lEKlrieSbqzsvohEPTy8wMZCBZCUZBtBPQuZAM7dqDMldJs3pSZCpeAiWVcKZBvlsZCYftPwUWZCVTxJSyXbcKZBZCcrdxYDhOn4VU6YA1SnEcl';
-const IG_ID          = '17841406844210220';
-const TRIGGER_WORD   = 'אוכל אותי';
+const VERIFY_TOKEN = 'lital_webhook_secret_2024';
+const PAGE_TOKEN   = 'EAFzIcbecZBb0BRFoIxvLHL2ZAxrNlB4D8QBArecmzePtVkXkrZBJjgt3ZBj0XJFS8XwOBHYioZBmzjcOr3raOTHzZCnV8G1bongfmvQZCCwlZCNINSXNW69NgcwgBZB2suR0lEKlrieSbqzsvohEPTy8wMZCBZCUZBtBPQuZAM7dqDMldJs3pSZCpeAiWVcKZBvlsZCYftPwUWZCVTxJSyXbcKZBZCcrdxYDhOn4VU6YA1SnEcl';
+const IG_ID        = '17841406844210220';
+const TRIGGER_WORD = 'אוכל אותי';
+const POLL_INTERVAL_MS = 2 * 60 * 1000; // כל 2 דקות
 
-// תגובות ציבוריות - נבחרת רנדומלית בכל פעם
 const PUBLIC_REPLIES = [
   'שולחת לך לפרטי 💌',
   'אצלך ב-DM ❤️',
@@ -18,11 +19,6 @@ const PUBLIC_REPLIES = [
   'אצלך בפרטי עכשיו ❤️',
 ];
 
-function randomReply() {
-  return PUBLIC_REPLIES[Math.floor(Math.random() * PUBLIC_REPLIES.length)];
-}
-
-// הודעת DM
 const LANDING_PAGE = 'https://lrs.ravpage.co.il/%D7%A4%D7%A8%D7%98%D7%99%D7%9D%20%D7%A9%D7%99%D7%97%D7%AA%20%D7%94%D7%AA%D7%90%D7%9E%D7%94';
 
 const DM_TEXT = `הי, כאן ליטל שחר ❤️
@@ -36,6 +32,24 @@ const DM_TEXT = `הי, כאן ליטל שחר ❤️
 
 אוהבת ליטל 🤍`;
 
+// שמירת IDs שכבר טופלו (בזיכרון - מספיק לרוב המקרים)
+const processedComments = new Set();
+
+function randomReply() {
+  return PUBLIC_REPLIES[Math.floor(Math.random() * PUBLIC_REPLIES.length)];
+}
+
+// ── GET מגרף API ──
+function apiGet(path) {
+  return new Promise((resolve, reject) => {
+    const sep = path.includes('?') ? '&' : '?';
+    https.get(`https://graph.facebook.com/v19.0${path}${sep}access_token=${PAGE_TOKEN}`, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve({}); } });
+    }).on('error', reject);
+  });
+}
+
 // ── POST לגרף API ──
 function apiPost(endpoint, params) {
   const body = JSON.stringify({ ...params, access_token: PAGE_TOKEN });
@@ -44,15 +58,10 @@ function apiPost(endpoint, params) {
       hostname: 'graph.facebook.com',
       path: '/v19.0' + endpoint,
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-      }
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
     }, res => {
       let d = ''; res.on('data', c => d += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(d)); } catch(e) { resolve(d); }
-      });
+      res.on('end', () => { try { resolve(JSON.parse(d)); } catch(e) { resolve({}); } });
     });
     req.on('error', reject);
     req.write(body);
@@ -60,77 +69,85 @@ function apiPost(endpoint, params) {
   });
 }
 
-// ── תגובה ציבורית על תגובה ──
 async function replyToComment(commentId, text) {
   const result = await apiPost(`/${commentId}/replies`, { message: text });
   if (result.error) console.error('שגיאה בתגובה ציבורית:', result.error.message);
   else console.log('✓ תגובה ציבורית נשלחה');
-  return result;
 }
 
-// ── שליחת DM ──
 async function sendDM(userId, text) {
   const result = await apiPost(`/${IG_ID}/messages`, {
     recipient: { id: userId },
     message: { text },
   });
   if (result.error) console.error('שגיאה ב-DM:', result.error.message);
-  else console.log('✓ DM נשלח ל-', userId);
-  return result;
+  else console.log('✓ DM נשלח');
 }
 
-// ── אימות Webhook (GET) ──
-app.get('/webhook', (req, res) => {
-  const mode      = req.query['hub.mode'];
-  const token     = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+// ── סריקת תגובות חדשות ──
+async function pollComments() {
+  try {
+    // קבל 10 פוסטים אחרונים
+    const media = await apiGet(`/${IG_ID}/media?fields=id&limit=10`);
+    if (!media.data) return;
 
-  if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('✓ Webhook אומת');
-    res.status(200).send(challenge);
+    for (const post of media.data) {
+      const comments = await apiGet(`/${post.id}/comments?fields=id,text,from,timestamp`);
+      if (!comments.data) continue;
+
+      for (const comment of comments.data) {
+        if (processedComments.has(comment.id)) continue;
+        processedComments.add(comment.id);
+
+        const text = (comment.text || '').trim();
+        if (!text.includes(TRIGGER_WORD)) continue;
+
+        console.log(`🎯 טריגר! "${text}" מ-${comment.from?.username || 'unknown'}`);
+
+        await replyToComment(comment.id, randomReply());
+
+        if (comment.from?.id) {
+          await sendDM(comment.from.id, DM_TEXT);
+        }
+      }
+    }
+  } catch(e) {
+    console.error('שגיאה בסריקה:', e.message);
+  }
+}
+
+// ── אתחול: טען תגובות קיימות כדי לא לענות על ישנות ──
+async function initProcessed() {
+  try {
+    const media = await apiGet(`/${IG_ID}/media?fields=id&limit=10`);
+    if (!media.data) return;
+    for (const post of media.data) {
+      const comments = await apiGet(`/${post.id}/comments?fields=id`);
+      if (comments.data) comments.data.forEach(c => processedComments.add(c.id));
+    }
+    console.log(`אתחול: סומנו ${processedComments.size} תגובות קיימות`);
+  } catch(e) {
+    console.error('שגיאה באתחול:', e.message);
+  }
+}
+
+// ── Webhook verification (לשמור לעתיד) ──
+app.get('/webhook', (req, res) => {
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === VERIFY_TOKEN) {
+    res.status(200).send(req.query['hub.challenge']);
   } else {
     res.sendStatus(403);
   }
 });
 
-// ── קבלת אירועי Webhook (POST) ──
-app.post('/webhook', async (req, res) => {
-  // תמיד להחזיר 200 מיד - Meta מצפה לתגובה תוך 20 שניות
-  res.sendStatus(200);
+app.post('/webhook', (req, res) => res.sendStatus(200));
 
-  const body = req.body;
-  if (body.object !== 'instagram') return;
-
-  for (const entry of body.entry || []) {
-    for (const change of entry.changes || []) {
-      if (change.field !== 'comments') continue;
-
-      const comment = change.value;
-      const text    = (comment.text || '').trim();
-
-      console.log(`תגובה חדשה: "${text}" מ-${comment.from?.username || 'unknown'}`);
-
-      if (text.includes(TRIGGER_WORD)) {
-        console.log('🎯 מילת טריגר זוהתה!');
-        const commentId  = comment.id;
-        const commenterId = comment.from?.id;
-
-        // 1. תגובה ציבורית (רנדומלית)
-        await replyToComment(commentId, randomReply());
-
-        // 2. DM
-        if (commenterId) {
-          await sendDM(commenterId, DM_TEXT);
-        } else {
-          console.warn('לא נמצא ID של המגיב - לא ניתן לשלוח DM');
-        }
-      }
-    }
-  }
-});
-
-// ── בדיקת חיים ──
 app.get('/', (req, res) => res.send('Lital Webhook Server - פועל ✓'));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`שרת webhook פועל על פורט ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`שרת פועל על פורט ${PORT}`);
+  await initProcessed();
+  console.log(`מתחיל סריקה כל ${POLL_INTERVAL_MS / 60000} דקות`);
+  setInterval(pollComments, POLL_INTERVAL_MS);
+});

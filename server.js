@@ -9,10 +9,22 @@ const PAGE_TOKEN     = 'EAFzIcbecZBb0BRMckVXsAHNbVz03QUB99CwNyF9OmnGCzIFZCDB5WSI
 const IG_ID          = '17841406844210220';
 const TRIGGER_WORD   = 'אוכל אותי';
 
-// תגובה ציבורית על הפוסט
-const PUBLIC_REPLY = 'שמחה שזה נגע! שלחתי לך הודעה פרטית עם משהו שיכול לעזור 💌';
+// תגובות ציבוריות - נבחרת רנדומלית בכל פעם
+const PUBLIC_REPLIES = [
+  'שולחת לך לפרטי 💌',
+  'אצלך ב-DM ❤️',
+  'אלופה, אצלך בפרטי 🤍',
+  'שלחתי לך הודעה פרטית 💌',
+  'אצלך בפרטי עכשיו ❤️',
+];
 
-// הודעת DM (תחליפי את הקישור)
+function randomReply() {
+  return PUBLIC_REPLIES[Math.floor(Math.random() * PUBLIC_REPLIES.length)];
+}
+
+// הודעת DM
+const LANDING_PAGE = '[קישור לדף הנחיתה]'; // ← תתעדכן בקרוב
+
 const DM_TEXT = `הי, כאן ליטל שחר ❤️
 
 כיף שהגעת.
@@ -20,7 +32,7 @@ const DM_TEXT = `הי, כאן ליטל שחר ❤️
 אם הרגשת שזה מדבר אלייך - זה לא במקרה.
 
 השארתי לך כאן משהו קטן שיעזור לך להבין מה באמת אוכל אותך:
-👉 [קישור לדף הנחיתה]
+👉 ${LANDING_PAGE}
 
 אוהבת ליטל 🤍`;
 
@@ -103,8 +115,8 @@ app.post('/webhook', async (req, res) => {
         const commentId  = comment.id;
         const commenterId = comment.from?.id;
 
-        // 1. תגובה ציבורית
-        await replyToComment(commentId, PUBLIC_REPLY);
+        // 1. תגובה ציבורית (רנדומלית)
+        await replyToComment(commentId, randomReply());
 
         // 2. DM
         if (commenterId) {
